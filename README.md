@@ -1,22 +1,14 @@
-# snakemake-jobmonitor manual
+# snakemake-jobmonitor package
+`snakemake-jobmonitor` is an alternative take on the regular [Snakemake](https://snakemake.readthedocs.io/en/stable/) workflow. Instead of passing input and output-files around, it passes log-files around. The log-files contain pointers to result-files. The advantage of this is much better progress monitoring, error handling and logging. The JobMonitor and JobResult classes ensure that this can be achieved with minimal code that is easy to read and maintain. `snakemake-jobmonitor` is a super minimal library of just two pages, it does not modify Snakemake, only the way Snakemake is used.
 
-## Contents
-
-[Introduction with snakemake example](#introduction)
-
-[Snakemake-jobmonitor example](#full-snakemake-jobmonitor-example)
-
-[JobMonitor class](#usage-of-jobmonitor)
-
-[JobResult class](#usage-of-jobresult)
-
-## Introduction
+## Regular Snakemake
 
 Snakemake is a powerful workflow-engine that compiles *rules* into a DAG (Directed Acyclic Graph) and automatically determines a parallel execution strategy.
-
 Rules invoke each other via *filenames*, which typically contain wildcards so that the same rule can be invoked for multiple cases.
 
-Example of a snakemake file that splits a color image into the red, green and blue component for cases '1','2' and '3'. 
+### Usage example
+
+Example of a Snakemake file that splits a color image into the red, green and blue component for cases '1','2' and '3'. 
 
 ```python
 inputFolder = '/path/to/cases'
@@ -57,6 +49,8 @@ rule decomposeAll:
         createReport(input.R,input.G,input.B, output.report)
 ```
 
+### Practical issues
+
 For larger workflows some issues arise:
 
 1. Snakemake does not come with a good progress monitor. There is a possibility to use the 'WMS monitoring protocol' but this is cumbersome to setup and being phased out. It is replaced by 'logger plugins', but these are still experimental.
@@ -66,6 +60,8 @@ For larger workflows some issues arise:
 3. Snakemake produces a log-file that contains information about process execution, but does not contain the console-output of the processes called by each rule. This is because a global log file is not suitable to contain logs from different components that may run in parallel.
 
 4. If a rule has many outputs, and another rule needs these as inputs, the rules become cluttered.  
+
+### An alternative approach
 
 To solve these issues, `snakemake-jobmonitor` changes the way rules interact. Every rule is producing a **log-file** instead of **output files**. And instead of having rule B request the *output* of rule A, it requests the *log-file* of rule A. Inside that log-file there is a pointer to where the rule results are stored. 
 
@@ -95,7 +91,6 @@ Although the code has become two lines longer, it offers huge advantages:
 3. Naturally, every rule produces its own log. In addition, JobMonitor provides a `run` method to invoke external software. This method is mostly the same as `subprocess.run`, but it captures all output to the *.log* file and sends errors to the *.error* file.
 
 4. Rules have inputs that are log files produced by other rules. And a single output: its own log file. The Snakefile is not cluttered by declaring all the output files that may be produced by each rule. Those are accessed indirectly via the result-pointer in its log-file. 
-
 
 
 ## Full snakemake-jobmonitor example
@@ -177,7 +172,7 @@ with JobMonitor(logFile,description,resultFolder) as job:
 
 Inside the context, `job` can be used for the following tasks:
 
-1. Access the result of this rule via `job.result(resultFile)`
+1. Create/access the result of this rule via `job.result(resultFile)`
    
    This returns a filename that concatenates the previously specified `resultFolder` with `resultFile`, and will make sure the folder is created. One can also write results in subfolders, by just adding arguments, like `job.result(subFolder,resultFile)`.  Examples:
    
@@ -209,7 +204,7 @@ then `result` can be used in the same way as `job.result` in the previous chapte
 
 `JobResult` has some additional convenience methods:  
 
-* `result.file(*args)` is the same as `result()`
+* `result.file(*args)` is the same as `result(*args)`
 
 * `result.folder(*args)` returns the result folder, internally using `os.path.dirname(resultFile)`
 
