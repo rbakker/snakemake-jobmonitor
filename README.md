@@ -98,7 +98,7 @@ Although the code has become two lines longer, it offers huge advantages:
 Here is the full version of the previous example in the `snakemake-jobmonitor` style.
 
 ```python
-from snakemake-jobmonitor import JobMonitor, JobResult
+from snakemake_jobmonitor import JobMonitor, JobResult
 
 inputFolder = '/path/to/subjects'
 logFolder = '/path/to/logs'
@@ -157,7 +157,7 @@ The JobMonitor class takes three arguments:
 
 - `description` brief description of what the rule does.
 
-- `resultFolder` path the result folder. One can also pass a result prefix by adding an asterisc at the end. Examples:
+- `resultFolder` path to the result folder. One can also pass a result prefix by adding an asterisc at the end. Examples:
   
   - `/my/results/case-1` will cause results to be written in the `case-1` folder.
   
@@ -187,6 +187,8 @@ Inside the context, `job` can be used for the following tasks:
    Here command must NOT be a string, but rather a list of strings that follows the exact same rules as the [subprocess.run](https://docs.python.org/3/library/subprocess.html#subprocess.run) command. The advantage of using `job.run()` is that it saves `stdout` and `stderror` to the log/error file respectively. 
    
    If `liveUpdates` is set to `False`, then the log/error file will be updated once the command is finished, if set to `True` the update is more frequent.
+
+As a general rule, we recommend that log-files are all stored in the same folder, with hierarchy expressed in the file name. For result-files it can be more natural to use a hierarchical folder structure. 
 
 ## Usage of JobResult
 
