@@ -1,0 +1,26 @@
+Assuming unrestricted shared filesystem usage.
+None
+host: lisa
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 1 (use --cores to define parallelism)
+Rules claiming more threads will be scaled down.
+Job stats:
+job             count
+------------  -------
+decomposeAll        1
+total               1
+
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:11:03 2025]
+localrule decomposeAll:
+    input: path_to_results/case-1_R.png, path_to_results/case-2_R.png, path_to_results/case-3_R.png, path_to_results/case-1_G.png, path_to_results/case-2_G.png, path_to_results/case-3_G.png, path_to_results/case-1_B.png, path_to_results/case-2_B.png, path_to_results/case-3_B.png
+    output: path_to_results/report.txt
+    jobid: 0
+    reason: Forced execution
+    resources: tmpdir=/tmp
+[Mon Oct 20 10:11:05 2025]
+Finished jobid: 0 (Rule: decomposeAll)
+1 of 1 steps (100%) done
+Complete log(s): /home/rembrandt/git/snakemake-jobmonitor/example/.snakemake/log/2025-10-20T101103.684319.snakemake.log

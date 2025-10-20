@@ -1,0 +1,11 @@
+Assuming unrestricted shared filesystem usage.
+None
+host: lisa
+Building DAG of jobs...
+MissingInputException in rule decomposeAll in file "/home/rembrandt/git/snakemake-jobmonitor/example/regular.snk", line 32:
+Missing input files for rule decomposeAll:
+    output: path_to_results/report.txt
+    affected files:
+        path_to_resultscase-2_B.png
+        path_to_resultscase-3_B.png
+        path_to_resultscase-1_B.png

@@ -1,0 +1,66 @@
+Assuming unrestricted shared filesystem usage.
+None
+host: lisa
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 1 (use --cores to define parallelism)
+Rules claiming more threads will be scaled down.
+Job stats:
+job                count
+---------------  -------
+decomposeAll           1
+decomposeSingle        3
+total                  4
+
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:45:39 2025]
+localrule decomposeSingle:
+    input: path_to_cases/case-3_RGB.jpeg
+    log: ../scratch/jobmon/path_to_logs/case-3_decompose.log
+    jobid: 3
+    reason: Forced execution
+    wildcards: case=3
+    resources: tmpdir=/tmp
+Select jobs to execute...
+[Mon Oct 20 10:45:41 2025]
+Finished jobid: 3 (Rule: decomposeSingle)
+1 of 4 steps (25%) done
+Execute 1 jobs...
+[Mon Oct 20 10:45:41 2025]
+localrule decomposeSingle:
+    input: path_to_cases/case-2_RGB.jpeg
+    log: ../scratch/jobmon/path_to_logs/case-2_decompose.log
+    jobid: 2
+    reason: Forced execution
+    wildcards: case=2
+    resources: tmpdir=/tmp
+Select jobs to execute...
+[Mon Oct 20 10:45:43 2025]
+Finished jobid: 2 (Rule: decomposeSingle)
+2 of 4 steps (50%) done
+Execute 1 jobs...
+[Mon Oct 20 10:45:43 2025]
+localrule decomposeSingle:
+    input: path_to_cases/case-1_RGB.jpeg
+    log: ../scratch/jobmon/path_to_logs/case-1_decompose.log
+    jobid: 1
+    reason: Forced execution
+    wildcards: case=1
+    resources: tmpdir=/tmp
+[Mon Oct 20 10:45:44 2025]
+Finished jobid: 1 (Rule: decomposeSingle)
+3 of 4 steps (75%) done
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:45:44 2025]
+localrule decomposeAll:
+    input: ../scratch/jobmon/path_to_logs/case-1_decompose.log, ../scratch/jobmon/path_to_logs/case-2_decompose.log, ../scratch/jobmon/path_to_logs/case-3_decompose.log
+    log: ../scratch/jobmon/path_to_logs/decomposeAll.log
+    jobid: 0
+    reason: Forced execution
+    resources: tmpdir=/tmp
+[Mon Oct 20 10:45:46 2025]
+Finished jobid: 0 (Rule: decomposeAll)
+4 of 4 steps (100%) done
+Complete log(s): /home/rembrandt/git/snakemake-jobmonitor/example/.snakemake/log/2025-10-20T104539.795187.snakemake.log

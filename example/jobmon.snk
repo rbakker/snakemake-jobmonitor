@@ -1,0 +1,52 @@
+# run as:
+# snakemake -s jobmon.snk --cores 1 --forceall
+
+import os
+from PIL import Image
+from snakemake_jobmonitor import JobMonitor, JobResult
+
+inputFolder = 'path_to_cases'
+outputFolder = '../scratch/jobmon/path_to_results'
+logFolder = '../scratch/jobmon/path_to_logs'
+
+allCases = ['1','2','3']
+
+def doSomethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
+    im = Image.open(colorInfile)
+    r,g,b = im.split()
+    r.save(redOutfile); g.save(greenOutfile); b.save(blueOutfile)
+    # uncomment this to raise a Division By Zero error:
+    #1/0
+
+def createReport(allRed,allBlue,allGreen, reportFile):
+    with open(reportFile,'wt') as fp:
+        fp.write(f'Red files:\n{",\n".join(allRed)}\n\n')
+        fp.write(f'Blue files:\n{",\n".join(allBlue)}\n\n')
+        fp.write(f'Green files:\n{",\n".join(allGreen)}\n\n')
+
+rule runSingleCase:
+    input:
+        color=inputFolder+'/case-{case}_RGB.jpeg'
+    log:
+        logFolder+'/case-{case}_decompose.log'
+    run:
+        caseFolder = f'{outputFolder}/case-{wildcards.case}'
+        with JobMonitor(log,'Decompose RGB into R,G,B',caseFolder) as job:
+            doSomethingUseful(
+                input.color, 
+                job.result('R.png'),job.result('G.png'),job.result('B.png')
+            )
+
+rule runAllCases:
+    input:
+        [logFolder+f'/case-{cs}_decompose.log' for cs in allCases]
+    log:
+        logFolder+f'/decomposeAll.log'
+    default_target:
+        True
+    run:
+        with JobMonitor(log,'Decompose All',outputFolder) as job:
+            R = [JobResult(f)('R.png') for f in input]
+            G = [JobResult(f)('G.png') for f in input]
+            B = [JobResult(f)('B.png') for f in input]
+            createReport(R,G,B, job.result('report.txt') )

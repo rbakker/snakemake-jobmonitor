@@ -1,46 +1,53 @@
 # snakemake-jobmonitor package
-`snakemake-jobmonitor` is an alternative take on the regular [Snakemake](https://snakemake.readthedocs.io/en/stable/) workflow. Instead of passing input and output-files around, it passes log-files around. The log-files contain pointers to result-files. The advantage of this is much better progress monitoring, error handling and logging. The JobMonitor and JobResult classes ensure that this can be achieved with minimal code that is easy to read and maintain. `snakemake-jobmonitor` is a super minimal library of just two pages, it does not modify Snakemake, only the way Snakemake is used.
+`snakemake-jobmonitor` is an alternative take on the regular [Snakemake](https://snakemake.readthedocs.io/en/stable/) workflow. Instead of passing input and output-files around, it passes log-files around. The log-files contain pointers to result-files. The advantage of this is much better progress monitoring, error handling and logging. The JobMonitor and JobResult classes ensure that this can be achieved with minimal code that is easy to read and maintain. `snakemake-jobmonitor` is a super minimal library of just two pages, installed by `pip install snakemake-jobmonitor'. It does not modify Snakemake, only the way Snakemake is used.
 
 ## Regular Snakemake
 
 Snakemake is a powerful workflow-engine that compiles *rules* into a DAG (Directed Acyclic Graph) and automatically determines a parallel execution strategy.
 Rules invoke each other via *filenames*, which typically contain wildcards so that the same rule can be invoked for multiple cases.
 
-### Usage example
+### Regular workflow example
 
-Example of a Snakemake file that splits a color image into the red, green and blue component for cases '1','2' and '3'. 
+Example of a Snakefile (examples/regular.snk, run with `snakemake -s regular.snk --cores 1 --forceall`) that splits a color image into the red, green and blue component for cases '1','2' and '3'.
 
 ```python
-inputFolder = '/path/to/cases'
-outputFolder = '/path/to/results'
+import os
+from PIL import Image
+
+inputFolder = 'path_to_cases'
+outputFolder = '../scratch/regular/path_to_results'
+os.makedirs(outputFolder,exist_ok=True)
+
 allCases = ['1','2','3']
 
-def doDecompose(colorInfile, redOutfile,greenOutfile,blueOutfile):
-    # implement here:
-    # Decompose the color image into red, green and blue components
-    # and save as redOutfile, blueOutfile and greenOutfile
+def somethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
+    im = Image.open(colorInfile)
+    r,g,b = im.split()
+    r.save(redOutfile); g.save(greenOutfile); b.save(blueOutfile)
+    # uncomment this to raise a Division By Zero error:
+    #1/0
 
 def createReport(allRed,allBlue,allGreen, reportFile):
-    # implement here:
-    # Create report and save as reportFile
+    with open(reportFile,'wt') as fp:
+        fp.write(f'Red files:\n{",\n".join(allRed)}\n\n')
+        fp.write(f'Blue files:\n{",\n".join(allBlue)}\n\n')
+        fp.write(f'Green files:\n{",\n".join(allGreen)}\n\n')
 
-
-rule decomposeSingle:
+rule runSingleCase:
     input:
-        color='inputFolder/case-{case}_RGB.png'
+        color=inputFolder+'/case-{case}_RGB.jpeg'
     output:
-        R='outputFolder/case-{case}_R.png',
-        G='outputFolder/case-{case}_G.png',
-        B='outputFolder/case-{case}_B.png'
+        R=outputFolder+'/case-{case}_R.png',
+        G=outputFolder+'/case-{case}_G.png',
+        B=outputFolder+'/case-{case}_B.png'
     run:
-        doDecompose(input.color, output.R,output.G,output.B)
+        somethingUseful(input.color, output.R,output.G,output.B)
 
-
-rule decomposeAll:
+rule runAllCases:
     input:
-        R=[f'{outputFolder}/case-{cs}_R.png' for cs in allCases],
-        G=[f'{outputFolder}/case-{cs}_G.png' for cs in allCases],
-        B=[f'{outputFolder}/case-{cs}_B.png' for cs in allCases]
+        R=[outputFolder+f'/case-{c}_R.png' for c in allCases],
+        G=[outputFolder+f'/case-{c}_G.png' for c in allCases],
+        B=[outputFolder+f'/case-{c}_B.png' for c in allCases]
     output:
         report=f'{outputFolder}/report.txt'
     default_target:
@@ -95,46 +102,50 @@ Although the code has become two lines longer, it offers huge advantages:
 
 ## Full snakemake-jobmonitor example
 
-Here is the full version of the previous example in the `snakemake-jobmonitor` style.
+Here is the full version of the previous example in the `snakemake-jobmonitor` style (examples/jobmon.snk, run with `snakemake -s jobmon.snk --cores 1`).
 
 ```python
+import os
+from PIL import Image
 from snakemake_jobmonitor import JobMonitor, JobResult
 
-inputFolder = '/path/to/subjects'
-logFolder = '/path/to/logs'
-outputFolder = '/path/to/results'
+inputFolder = 'path_to_cases'
+outputFolder = '../scratch/jobmon/path_to_results'
+logFolder = '../scratch/jobmon/path_to_logs'
 
 allCases = ['1','2','3']
 
-def doDecompose(colorInfile, redOutfile,greenOutfile,blueOutfile):
-    # implement here:
-    # Decompose the color image into red, green and blue components
-    # and save as redOutfile, blueOutfile and greenOutfile
+def doSomethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
+    im = Image.open(colorInfile)
+    r,g,b = im.split()
+    r.save(redOutfile); g.save(greenOutfile); b.save(blueOutfile)
+    # uncomment this to raise a Division By Zero error:
+    #1/0
 
 def createReport(allRed,allBlue,allGreen, reportFile):
-    # implement here:
-    # Create report and save as reportFile
+    with open(reportFile,'wt') as fp:
+        fp.write(f'Red files:\n{",\n".join(allRed)}\n\n')
+        fp.write(f'Blue files:\n{",\n".join(allBlue)}\n\n')
+        fp.write(f'Green files:\n{",\n".join(allGreen)}\n\n')
 
-
-rule decomposeSingle:
+rule runSingleCase:
     input:
-        color='inputFolder/case-{case}_RGB.png'
+        color=inputFolder+'/case-{case}_RGB.jpeg'
     log:
-        'logFolder/case-{case}_decompose.log'
+        logFolder+'/case-{case}_decompose.log'
     run:
         caseFolder = f'{outputFolder}/case-{wildcards.case}'
         with JobMonitor(log,'Decompose RGB into R,G,B',caseFolder) as job:
-            doDecompose(
+            doSomethingUseful(
                 input.color, 
                 job.result('R.png'),job.result('G.png'),job.result('B.png')
             )
 
-
-rule decomposeAll:
+rule runAllCases:
     input:
-        [f'{logFolder}/case-{cs}_decompose.log' for cs in allCases]
+        [logFolder+f'/case-{cs}_decompose.log' for cs in allCases]
     log:
-        f'{logFolder}/decomposeAll.log'
+        logFolder+f'/decomposeAll.log'
     default_target:
         True
     run:
@@ -144,8 +155,6 @@ rule decomposeAll:
             B = [JobResult(f)('B.png') for f in input]
             createReport(R,G,B, job.result('report.txt') )
 ```
-
-
 
 ## Usage of JobMonitor
 

@@ -1,0 +1,70 @@
+Assuming unrestricted shared filesystem usage.
+None
+host: lisa
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 1 (use --cores to define parallelism)
+Rules claiming more threads will be scaled down.
+Job stats:
+job                count
+---------------  -------
+decomposeAll           1
+decomposeSingle        3
+total                  4
+
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:09:28 2025]
+localrule decomposeSingle:
+    input: path_to_cases/case-3_RGB.jpeg
+    output: path_to_results/case-3_R.png, path_to_results/case-3_G.png, path_to_results/case-3_B.png
+    jobid: 3
+    reason: Missing output files: path_to_results/case-3_B.png, path_to_results/case-3_G.png, path_to_results/case-3_R.png
+    wildcards: case=3
+    resources: tmpdir=/tmp
+Select jobs to execute...
+Traceback (most recent call last):
+
+  File "/home/rembrandt/miniforge3/envs/etz-tractography/lib/python3.12/site-packages/snakemake/executors/local.py", line 232, in spawn_job
+    subprocess.check_call(cmd, shell=True)
+
+  File "/home/rembrandt/miniforge3/envs/etz-tractography/lib/python3.12/subprocess.py", line 415, in check_call
+    raise CalledProcessError(retcode, cmd)
+
+subprocess.CalledProcessError: Command 'cd /home/rembrandt/git/snakemake-jobmonitor/example && /home/rembrandt/miniforge3/envs/etz-tractography/bin/python3.12 -m snakemake --snakefile '/home/rembrandt/git/snakemake-jobmonitor/example/regular.snk' --target-jobs 'decomposeSingle:case=3' --allowed-rules decomposeSingle --cores 1 --attempt 1 --force-use-threads  --force --target-files-omit-workdir-adjustment --max-inventory-time 0 --nocolor --notemp --no-hooks --nolock --ignore-incomplete --rerun-triggers input code software-env mtime params --conda-frontend 'conda' --shared-fs-usage software-deployment sources source-cache input-output storage-local-copies persistence --wrapper-prefix 'https://github.com/snakemake/snakemake-wrappers/raw/' --latency-wait 5 --scheduler 'greedy' --local-storage-prefix base64//LnNuYWtlbWFrZS9zdG9yYWdl --scheduler-solver-path '/home/rembrandt/miniforge3/envs/etz-tractography/bin' --default-resources base64//dG1wZGlyPXN5c3RlbV90bXBkaXI= --quiet progress rules host --mode 'subprocess' --local-groupid 'local'' returned non-zero exit status 1.
+
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+
+  File "/home/rembrandt/miniforge3/envs/etz-tractography/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "/home/rembrandt/miniforge3/envs/etz-tractography/lib/python3.12/site-packages/snakemake/executors/local.py", line 247, in cached_or_run
+    run_func(*args)
+
+  File "/home/rembrandt/miniforge3/envs/etz-tractography/lib/python3.12/site-packages/snakemake/executors/local.py", line 234, in spawn_job
+    raise SpawnedJobError()
+
+snakemake.exceptions.SpawnedJobError
+
+[Mon Oct 20 10:09:30 2025]
+Error in rule decomposeSingle:
+    message: None
+    jobid: 3
+    input: path_to_cases/case-3_RGB.jpeg
+    output: path_to_results/case-3_R.png, path_to_results/case-3_G.png, path_to_results/case-3_B.png
+Shutting down, this might take some time.
+Exiting because a job execution failed. Look below for error messages
+[Mon Oct 20 10:09:30 2025]
+Error in rule decomposeSingle:
+    message: None
+    jobid: 3
+    input: path_to_cases/case-3_RGB.jpeg
+    output: path_to_results/case-3_R.png, path_to_results/case-3_G.png, path_to_results/case-3_B.png
+Complete log(s): /home/rembrandt/git/snakemake-jobmonitor/example/.snakemake/log/2025-10-20T100928.133469.snakemake.log
+WorkflowError:
+At least one job did not complete successfully.

@@ -1,0 +1,46 @@
+# run with:
+# snakemake -s regular.snk --cores 1 --forceall
+
+import os
+from PIL import Image
+
+inputFolder = 'path_to_cases'
+outputFolder = '../scratch/regular/path_to_results'
+os.makedirs(outputFolder,exist_ok=True)
+
+allCases = ['1','2','3']
+
+def doSomethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
+    im = Image.open(colorInfile)
+    r,g,b = im.split()
+    r.save(redOutfile); g.save(greenOutfile); b.save(blueOutfile)
+    # uncomment this to raise a Division By Zero error:
+    #1/0
+
+def createReport(allRed,allBlue,allGreen, reportFile):
+    with open(reportFile,'wt') as fp:
+        fp.write(f'Red files:\n{",\n".join(allRed)}\n\n')
+        fp.write(f'Blue files:\n{",\n".join(allBlue)}\n\n')
+        fp.write(f'Green files:\n{",\n".join(allGreen)}\n\n')
+
+rule runSingleCase:
+    input:
+        color=inputFolder+'/case-{case}_RGB.jpeg'
+    output:
+        R=outputFolder+'/case-{case}_R.png',
+        G=outputFolder+'/case-{case}_G.png',
+        B=outputFolder+'/case-{case}_B.png'
+    run:
+        doSomethingUseful(input.color, output.R,output.G,output.B)
+
+rule runAllCases:
+    input:
+        R=[outputFolder+f'/case-{c}_R.png' for c in allCases],
+        G=[outputFolder+f'/case-{c}_G.png' for c in allCases],
+        B=[outputFolder+f'/case-{c}_B.png' for c in allCases]
+    output:
+        report=f'{outputFolder}/report.txt'
+    default_target:
+        True
+    run:
+        createReport(input.R,input.G,input.B, output.report)

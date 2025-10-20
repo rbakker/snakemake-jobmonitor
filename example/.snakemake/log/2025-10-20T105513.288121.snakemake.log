@@ -1,0 +1,66 @@
+Assuming unrestricted shared filesystem usage.
+None
+host: lisa
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 1 (use --cores to define parallelism)
+Rules claiming more threads will be scaled down.
+Job stats:
+job             count
+------------  -------
+doAllCases          1
+doSingleCase        3
+total               4
+
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:55:13 2025]
+localrule doSingleCase:
+    input: path_to_cases/case-3_RGB.jpeg
+    output: ../scratch/regular/path_to_results/case-3_R.png, ../scratch/regular/path_to_results/case-3_G.png, ../scratch/regular/path_to_results/case-3_B.png
+    jobid: 3
+    reason: Forced execution
+    wildcards: case=3
+    resources: tmpdir=/tmp
+Select jobs to execute...
+[Mon Oct 20 10:55:14 2025]
+Finished jobid: 3 (Rule: doSingleCase)
+1 of 4 steps (25%) done
+Execute 1 jobs...
+[Mon Oct 20 10:55:14 2025]
+localrule doSingleCase:
+    input: path_to_cases/case-2_RGB.jpeg
+    output: ../scratch/regular/path_to_results/case-2_R.png, ../scratch/regular/path_to_results/case-2_G.png, ../scratch/regular/path_to_results/case-2_B.png
+    jobid: 2
+    reason: Forced execution
+    wildcards: case=2
+    resources: tmpdir=/tmp
+Select jobs to execute...
+[Mon Oct 20 10:55:16 2025]
+Finished jobid: 2 (Rule: doSingleCase)
+2 of 4 steps (50%) done
+Execute 1 jobs...
+[Mon Oct 20 10:55:16 2025]
+localrule doSingleCase:
+    input: path_to_cases/case-1_RGB.jpeg
+    output: ../scratch/regular/path_to_results/case-1_R.png, ../scratch/regular/path_to_results/case-1_G.png, ../scratch/regular/path_to_results/case-1_B.png
+    jobid: 1
+    reason: Forced execution
+    wildcards: case=1
+    resources: tmpdir=/tmp
+[Mon Oct 20 10:55:18 2025]
+Finished jobid: 1 (Rule: doSingleCase)
+3 of 4 steps (75%) done
+Select jobs to execute...
+Execute 1 jobs...
+[Mon Oct 20 10:55:18 2025]
+localrule doAllCases:
+    input: ../scratch/regular/path_to_results/case-1_R.png, ../scratch/regular/path_to_results/case-2_R.png, ../scratch/regular/path_to_results/case-3_R.png, ../scratch/regular/path_to_results/case-1_G.png, ../scratch/regular/path_to_results/case-2_G.png, ../scratch/regular/path_to_results/case-3_G.png, ../scratch/regular/path_to_results/case-1_B.png, ../scratch/regular/path_to_results/case-2_B.png, ../scratch/regular/path_to_results/case-3_B.png
+    output: ../scratch/regular/path_to_results/report.txt
+    jobid: 0
+    reason: Forced execution
+    resources: tmpdir=/tmp
+[Mon Oct 20 10:55:20 2025]
+Finished jobid: 0 (Rule: doAllCases)
+4 of 4 steps (100%) done
+Complete log(s): /home/rembrandt/git/snakemake-jobmonitor/example/.snakemake/log/2025-10-20T105513.288121.snakemake.log
