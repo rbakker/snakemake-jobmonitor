@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snakemake_jobmonitor"
-version = "0.0"
+version = "0.1.2"
 authors = [
   { name="Rembrandt Bakker", email="r.bakker@etz.nl" }
 ]
-description = "Tool used to extend Snakefile with Job Monitoring capabilities"
+description = "A new take on using Snakemake: pass around log-files instead of output-files"
 readme = "README.md"
 required-python = ">=3.9"
 classifiers = [
