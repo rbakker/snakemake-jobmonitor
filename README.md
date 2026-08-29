@@ -20,7 +20,7 @@ os.makedirs(outputFolder,exist_ok=True)
 
 allCases = ['1','2','3']
 
-def somethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
+def doSomethingUseful(colorInfile, redOutfile,greenOutfile,blueOutfile):
     im = Image.open(colorInfile)
     r,g,b = im.split()
     r.save(redOutfile); g.save(greenOutfile); b.save(blueOutfile)
@@ -41,7 +41,7 @@ rule runSingleCase:
         G=outputFolder+'/case-{case}_G.png',
         B=outputFolder+'/case-{case}_B.png'
     run:
-        somethingUseful(input.color, output.R,output.G,output.B)
+        doSomethingUseful(input.color, output.R,output.G,output.B)
 
 rule runAllCases:
     input:

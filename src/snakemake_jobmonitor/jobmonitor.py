@@ -4,125 +4,200 @@ from datetime import datetime
 import traceback
 import subprocess
 import re
-import logging
 import json
+import time
+import tempfile
+import shlex
 
-logger = logging.getLogger('job')
-logging.basicConfig(encoding='utf-8', level=logging.INFO)
 
-"""
-def snakemakeLogHandler(logFile,logLevel=logging.DEBUG):
-    formatter = logging.Formatter("%(asctime)s [%(levelname)-5s|%(name)s] %(message)s")
-    logger = logging.getLogger(f'snakemake.jobmonitor')
-    handler = logging.FileHandler(logFile)
-    handler.setLevel(logLevel)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)    
-"""
+# Replaces extension, but keeps extra extension if equal to `outerExt`.
+# Returns file with new extension.
+def replaceInnerExtension(fname,newExt,outerExt='.md'):
+    noext,ext = op.splitext(fname)
+    hasOuter = (ext==outerExt)
+    if hasOuter:
+        noext,ext = op.splitext(noext)
+    return noext+newExt+(outerExt if hasOuter else '')
 
-# utility function to convert a string into a token that is safe for inclusion in file names.
-def string2token(s):
-    def to0x(c):
-        x = ord(c.group())
-        if x>255:
-            x = 168 # inverted questionmark
-        return f'0x{x:02x}'
 
-    if re.search(r'[^a-zA-Z0-9]',s):
-        s = s.replace('0x','0xx')
-        s = '('+re.sub(r'[^a-zA-Z0-9_\-. ]',to0x,s)+')'
-    return s
-
-# utility function to convert a token back into the string that it was derived from.
-def token2string(s):
-    def toChar(xx):
-        x = bytearray.fromhex(xx.group(1))
-        return x.decode()
-
-        x = ord(c.group())
-        if x>255:
-            x = 168 # inverted questionmark
-        return f'0x{x:02x}'
-
-    if s[0] == '(':
-        s = re.sub(r'0x([a-fA-F0-9]{2})',toChar,s[1:-1])
-        s = s.replace('0xx','0x')
-    return s
-    
-
-# Apply substitutions in a dictionary that contains wildcard keys,
-# like "{subject}":"s123"
-# In this case, all instances of {subject} in descendant nodes will be
-# substituted by the wildcard value "s123" 
-def applySubstitutions(kv,wildcards={}):
-    for k,v in kv.items():
-        if isinstance(v,str):
-            try:
-                v = v.format(**wildcards)
-                kv[k] = v
-            except Exception as E:
-                print('Exception in applySubstitutions',E)
-                pass
-
-        if k.startswith('{') and k.endswith('}'):
-            wildcards[k[1:-1]] = v
-        
-        if isinstance(v,dict):
-            v = applySubstitutions(v,wildcards.copy())
-    
-    return kv
-    
-   
-# JobResult manages the result storage location.
-# If `logFile` does not yet exist, a `prefix` is needed to know where result files are stored.
-# Otherwise, `prefix` is obtained from the 2nd line of the log file.
 class JobResult():
-    def __init__(self,logFile,prefix=None,makedirs=False):
-        if prefix:
-            self.prefix = prefix
-        else:
-            with open(logFile,'rt') as fp:
-                fp.readline()
-                self.prefix = fp.readline().rstrip('* \n')
-        self.logFile = logFile
-        self.makedirs = makedirs
-    
-    # Short-hand version of the file() method.
-    def __call__(self,*args):
-        return self.file(*args)
+    def __init__(self, log_file, prefix=None, create=False, output_patterns=None):
+        self._log_file = log_file
+        self._create = create
+        self._output_patterns = output_patterns or {}
+        self._compiled_patterns = []
+        self._named_outputs = {}
+        self._numbered_outputs = []
+        self._errors = []
+        self._warnings = []
         
-    # Return a file in the job's output folder, including the prefix.
-    # Use multiple arguments for files in subfolders.
-    # Examples:
-    #   if prefix is '/path/to/workdir/', file('result.txt') returns /path/to/workdir/result.txt
-    #   if prefix is '/path/to/workdir/caseA_', file('result.txt') returns /path/to/workdir/caseA_result.txt
-    #   if prefix is '/path/to/workdir/caseA_', file('step1','result.txt') returns /path/to/workdir/caseA_step1/result.txt
-    def file(self,*args):
-        if len(args):
-            resultFile = op.join(self.prefix+args[0],*args[1:])
+        if self._create:
+            if prefix:
+                self._prefix = prefix
+            else:
+                self._prefix = op.join(op.dirname(log_file),'')
+            if output_patterns:
+                self._compile_patterns(output_patterns)
         else:
-            resultFile = self.prefix
-        if self.makedirs:
-            os.makedirs(op.dirname(resultFile),exist_ok=True)
-        return resultFile
-    
-    # Return the folder name of a job result file, see the file() method.
-    def folder(self,*args):
-        return op.dirname(self.file(*args))
-
-    # Read the file given by *args and return its json-decoded contents.
-    def parseJson(self,*args):
-        with open(self.file(*args),'rt') as fp:
-            return json.load(fp)
+            if not op.exists(log_file):
+                raise FileNotFoundError(f"Log file not found: {log_file}")
                 
-    # Return file that contains error message for this job, if any.
-    def error():
-        errorFile = op.splitext(self.logFile)[0]+'.error'
-        return errorFile if op.isfile(errorFile) else None
+            with open(log_file, 'rt') as fp:
+                fp.readline()
+                self._prefix = fp.readline().rstrip('* \n')
+            
+            mapping = self._load_mapping_from_log()
+            if mapping:
+                self._apply_mapping(mapping)
+
+
+    @classmethod
+    def fromCheckpoint(cls,checkpoint,wildcards):
+        logFile = checkpoint.get(**wildcards).output[0]
+        return cls(logFile)
         
-    def success(self):
-        return not self.error()
+      
+    def __getattr__(self, name):
+        if name in self._named_outputs:
+            value = self._named_outputs[name]
+        elif name in self._output_patterns:
+            value = self._output_patterns[name]
+            self._named_outputs[name] = value
+        else:
+            matched_value = self._match_pattern(name)
+            if matched_value:
+                value = matched_value
+                self._named_outputs[name] = value
+            else:
+                raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         
+        return self._resolve_value(value) if isinstance(value,str) else value
+
+
+    def _compile_patterns(self, patterns):
+        """Pre-compiles keys with {wildcards} into regex objects."""
+        for pattern, template in patterns.items():
+            if '{' in pattern and '}' in pattern:
+                # Escape literal chars (like dots or hyphens)
+                regex_str = re.escape(pattern)
+                # Re-enable the brackets for wildcard replacement
+                regex_str = regex_str.replace(r'\{', '{').replace(r'\}', '}')
+                # Convert {name} to named capture groups
+                regex_str = re.sub(r'\{(\w+)\}', r'(?P<\1>.+?)', regex_str)
+                
+                # Store the compiled regex along with the original template
+                self._compiled_patterns.append((re.compile(f"^{regex_str}$"), template))
+
+
+    def _match_pattern(self, name):
+        """Uses the pre-compiled cache to find a match."""
+        for regex, template in self._compiled_patterns:
+            match = regex.match(name)
+            if match:
+                try:
+                    return template.format(**match.groupdict())
+                except KeyError:
+                    continue
+        return None  
+              
+              
+    def __getitem__(self, idx):
+        if isinstance(idx, (int, slice)):
+            value = self._numbered_outputs[idx]
+            return self._resolve_value(value)
+        elif isinstance(idx, str):
+            return self.__getattr__(idx)
+        else:
+            raise TypeError(f"Invalid index type: {type(idx).__name__}")
+
+
+    def __call__(self, arg=None, **kwargs):
+        if kwargs:
+            name, value = next(iter(kwargs.items()))
+            self._named_outputs[name] = value
+        elif arg is not None:
+            value = arg
+            self._numbered_outputs.append(value)
+        else:
+            value = ''
+        
+        return self._resolve_value(value)
+
+
+    def _apply_mapping(self, mapping):
+        self._numbered_outputs.extend(mapping.get('by_number', []))
+        self._named_outputs.update(mapping.get('by_name', {}))
+        self._errors.extend(mapping.get('errors', []))
+        self._warnings.extend(mapping.get('warnings', []))
+
+
+    def _load_mapping_from_log(self):
+        try:
+            with open(self._log_file, 'rb') as f:
+                f.seek(0, os.SEEK_END)
+                pointer = f.tell()
+                buffer = []
+                while pointer > 0:
+                    pointer -= 1
+                    f.seek(pointer)
+                    char = f.read(1).decode('ascii', errors='ignore')
+                    buffer.append(char)
+                    if char == '{':
+                        is_sol = pointer == 0
+                        if not is_sol:
+                            f.seek(pointer - 1)
+                            if f.read(1).decode('ascii', errors='ignore') in ['\n', '\r']:
+                                is_sol = True
+                        if is_sol:
+                            json_str = "".join(reversed(buffer))
+                            return json.loads(json_str)
+        except (OSError, json.JSONDecodeError):
+            return None
+        return None
+
+
+    def _resolve_value(self, value):
+        if isinstance(value, (list, tuple)):
+            return self._file(*value)
+        return self._file(value)
+
+
+    def _output_mapping(self):
+        mapping = dict()
+        if self._numbered_outputs:
+            mapping['by_number'] = self._numbered_outputs
+        if self._named_outputs:
+            mapping['by_name'] = self._named_outputs        
+        if self._errors:
+            mapping['errors'] = self._errors        
+        if self._warnings:
+            mapping['warnings'] = self._warnings        
+        return mapping
+
+
+    def _file(self, *args):
+        if args:
+            # Note: str(args[0]) handles if the first arg is already a path string
+            result_file = op.join(self._prefix + str(args[0]), *map(str, args[1:]))
+        else:
+            result_file = self._prefix
+            
+        if self._create:
+            os.makedirs(op.dirname(result_file) or '.', exist_ok=True)
+        return result_file
+
+
+    def _folder(self, *args):
+        return op.dirname(self._file(*args) or '.')
+
+
+    def _append_error(self, msg):
+        self._errors.append(msg)
+
+
+    def _append_warning(self, msg):
+        self._warnings.append(msg)
+
 
 # JobMonitor tracks job progress and logs messages.
 # It has a `run` method to use shell commands and capture their output in the log file.
@@ -138,60 +213,64 @@ class JobResult():
 # If it ends with '*' as in /my/folder/subject01* then results are stored in '/my/folder' with filenames starting with 'subject01'.
 #
 class JobMonitor():
-    def __init__(self,logFile,jobName='Job',resultFolderOrPrefix=None):
-        if not isinstance(logFile,str):
-            logFile = logFile[0]
-        self.logNoext,self.logExt = op.splitext(logFile)
-        self.logFile = self.logNoext+'.running'
+    def __init__(self,logFile,jobName='Job',resultFolderOrPrefix=None,output_patterns=None,shell_context={}):
+        if isinstance(logFile,str):
+            self.logFile = logFile
+        else:
+            # This makes it possible in a Snakefile to use JobMonitor(log)
+            self.logFile = logFile[0]
         self.jobName = jobName
+        self.markdown = self.logFile.endswith('.md')
+        self.shell_context = shell_context
 
         # fullPrefix is the combination of resultFolder and resultPrefix
         if not resultFolderOrPrefix:
-            resultFolderOrPrefix = op.dirname(logFile)
+            resultFolderOrPrefix = op.dirname(self.logFile)
         if resultFolderOrPrefix.endswith('*'):
             prefix = resultFolderOrPrefix[:-1]
         else:
             prefix = op.join(resultFolderOrPrefix,'')
             
-        self.result = JobResult(logFile,prefix=prefix,makedirs=True)
+        self.result = JobResult(self.logFile,prefix=prefix,create=True,output_patterns=output_patterns)
+        
+        # allow JobMonitor to be run out-of-context
+        self.started = datetime.now()
+        self.runningLog = None
+        
+        # works with tmpdir function
+        self._tmpdir = None
             
+            
+    def tmpdir(self,*args):
+        if self._tmpdir is None:
+            self._tmpdir = tempfile.TemporaryDirectory()
+        
+        path = self._tmpdir.name
+        if len(args):
+            path = op.join(path,*args)
+            os.makedirs(path,exist_ok=True)
+        return path
 
-    def startLogging(self):
-        # log using the Python logging module
-        formatter = logging.Formatter("%(asctime)s [%(levelname)-5s|%(name)s] %(message)s")
-        logger = logging.getLogger(f'job.{self.jobName}')
-        handler = logging.FileHandler(self.logFile)
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        self.logger = logger
-        self.handler = handler
 
-
-    def stopLogging(self):
-        self.logger.removeHandler(self.handler)
+    def tmpfile(self,name):
+        return op.join(self.tmpdir(),name)
 
 
     def __enter__(self):
-        self.start = datetime.now()
-        logFolder = op.dirname(self.logFile)
+        self.started = datetime.now()
+        logFolder = op.dirname(self.logFile) or '.'
         os.makedirs(logFolder,exist_ok=True)
             
-        with open(self.logFile,'wt') as fp:
-            fp.write(f'"{self.jobName}" started at {self.start}, saving output to\n{self.result.file()}\n')
-
+        self.runningLog = replaceInnerExtension(self.logFile,'.running')
+        with open(self.runningLog,'wt') as fp:
+            fp.write(f'"{self.jobName}" started at {self.started}, saving output to\n{self.result()}\n')
+        
         try:
             # if process failed previously, remove the failure report
-            oldFail = op.splitext(self.logFile)[0]+'.error'
+            oldFail = replaceInnerExtension(self.runningLog,'.error')
             if op.exists(oldFail):
                  os.remove(oldFail)
             
-            # No longer necessary with the makedirs option in JobResult
-            #if self.result:
-            #    # make sure result folder exists
-            #    os.makedirs(self.result.folder(),exist_ok=True)
-
-            self.startLogging()
         except Exception as e:
             tb = traceback.format_exc().splitlines()
             raise RuntimeError(f'Error in JobMonitor, {tb}')
@@ -200,7 +279,8 @@ class JobMonitor():
 
 
     def __exit__(self, exc_type, exc_value, tb):
-        elapsed = datetime.now()-self.start
+        self.stopped = datetime.now()
+        elapsed = self.stopped-self.started
         if exc_type is None:
             # Process is ready.
             self.log(f'"{self.jobName}" completed in {elapsed} hh:mm:ss.')
@@ -211,20 +291,27 @@ class JobMonitor():
                 err = "\n".join(err)
             self.log(f'"{self.jobName}" failed after {elapsed} hh:mm:ss.')
             self.error(err)
-        
-        self.stopLogging()
-        os.rename(self.logFile,self.logNoext+self.logExt)
+
+        with open(self.runningLog,'at') as fp:
+            fp.write('Output mapping\n')
+            json.dump(self.result._output_mapping(),fp,indent=2)
             
+        os.rename(self.runningLog,self.logFile)
+        self.runningLog = self.logFile
+        
+        if self._tmpdir:
+            self._tmpdir.cleanup()    
+            self._tmpdir = None
         return True
 
             
     # return error message, if any
     def checkError(self,logFile=None):
+        if logFile is None:
+            logFile = self.logFile
         if not isinstance(logFile,str):
             logFile = logFile[0]
-        if not logFile:
-            logFile = self.logFile
-        errorFile = op.splitext(logFile)[0]+'.error'
+        errorFile = replaceInnerExtension(logFile,'.error')
         if op.isfile(errorFile):
             with open(errorFile,'rt') as fp:
                 return fp.read()
@@ -245,75 +332,110 @@ class JobMonitor():
 
 
     def log(self,msg,timeIt=True):
-        with open(self.logFile,'at') as fp:
+        with open(self.runningLog,'at') as fp:
             if timeIt:
-                elapsed = datetime.now()-self.start
+                elapsed = datetime.now()-self.started
                 fp.write(f'[{elapsed}] {msg}\n')
             else:
                 fp.write(f'{msg}\n')
 
 
-    def error(self,msg):
-        self.log(f'Error message: {msg}',timeIt=False)
+    def error(self, msg):
+        if isinstance(msg, BaseException):
+            tb = traceback.format_exc()
+            msg = f"{msg}\n{tb}"
+        else:
+            msg = str(msg)
+
+        self.log(f"Error: {msg}", timeIt=False)
+
         # create an error message file
-        errorFile = op.splitext(self.logFile)[0]+'.error'
+        errorFile = replaceInnerExtension(self.logFile,'.error')
         with open(errorFile,'at') as fp:
             fp.write(msg+'\n')
 
 
-    def run(self,cmd,cwd=None, timeout=None, env=None, failOnError=True, liveUpdates=False):
+    def periodic_log(self,p_stdout,interval,formatter):
+        lines = []
+        def flush():
+            if formatter is None:
+                formatted = '\n'.join(lines)
+            else:
+                formatted = formatter(lines)
+
+            if formatted:
+                self.log(formatted, timeIt=False)
+
+            lines.clear()        
+            return formatted
+                    
+        last_flush = time.time()
+        output = []
+        for line in iter(p_stdout.readline, ''):
+            lines.append(line.rstrip('\n'))
+
+            if (time.time()-last_flush >= interval):
+                output.append( flush() )
+                last_flush = time.time()
+                    
+        if len(lines):
+            output.append( flush() )
+            
+        return '\n'.join(output)
+      
+
+    def run(self, cmd, cwd=None, timeout=None, env=None,
+            failOnError=True, updateInterval_s=None, formatter=None):
+
         msg = f'Running process `{subprocess.list2cmdline(cmd)}`'
+        print(f'{msg},\n=> output to {self.logFile}.')
         self.log(msg)
-        if liveUpdates:
-            print(f'{msg},\n=> output to {self.logFile}.')
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, text=True)
-     
-            line = p.stdout.readline()
-            while line:
-                msg = line.rstrip('\n')
-                self.log(msg,timeIt=False)
-                line = p.stdout.readline()
-            
-            returnCode = p.wait()
-            if p.returncode>0:
-                stderr = p.stderr.read()
-        else:            
-            p = subprocess.run(cmd,cwd=cwd,timeout=timeout,env=env,capture_output=True,text=True)
-            self.log(p.stdout)
-            returnCode = p.returncode
-            stderr = p.stderr
-            
-        if returnCode>0:
+
+        if self.markdown:
+            self.log('```\n')
+
+        if updateInterval_s is not None:
+            p = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=cwd,
+                env=env,
+                bufsize=1
+            )
+
+            output = self.periodic_log(p.stdout, updateInterval_s, formatter)
+            p.wait()
+        else:
+            p = subprocess.run(
+                cmd,
+                cwd=cwd,
+                timeout=timeout,
+                env=env,
+                capture_output=True,
+                text=True
+            )
+
+            # Log stdout
+            output = (p.stdout or "") + (p.stderr or "")
+            if output:
+                self.log(output + ("" if output.endswith("\n") else "\n"))
+
+        if self.markdown:
+            self.log('```\n')
+
+        returnCode = p.returncode
+        if returnCode > 0:
+            error = output if len(output)<=1000 else '...\n'+output[-1000:]
             if failOnError:
-                # report the error and raise exception
-                raise RuntimeError(stderr)
+                raise RuntimeError(error)
             else:
-                # just report the error
-                self.error(stderr)
-        
-        
-    def runVerbose(self,cmd,cwd=None, env=None, failOnError=True):
-        #self.run(cmd,env,failOnError=failOnError,liveUpdates=True)
-        self.log(f'Running process `{subprocess.list2cmdline(cmd)}`')
-        print(f'Running process `{subprocess.list2cmdline(cmd)}`,\nsaving output to {self.logFile}.')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, text=True)
- 
-        line = p.stdout.readline()
-        while line:
-            msg = line.rstrip('\n')
-            self.log(msg,timeIt=False)
-            line = p.stdout.readline()
-        
-        returnCode = p.wait()
-        if p.returncode>0:
-            stderr = p.stderr.read()
-            if failOnError:
-                # report the error and raise exception
-                raise RuntimeError(stderr)
-            else:
-                # just report the error
-                self.error(stderr)
+                self.error(error)
+
+        return returnCode, output
                 
-                
-    def shellWrap(self,shellScript):
-        return 'set +euo pipefail; exec >> {job.logFile:q} 2>&1; '+shellScript
+    
+    def shell(self,script):
+        from snakemake import shell as sh
+        sh(f'set +euo pipefail; exec >> {shlex.quote(self.runningLog)} 2>&1; '+script,**self.shell_context)
